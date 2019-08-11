@@ -1,0 +1,38 @@
+{
+  "name": "tiny-pixel/wp-jwt",
+  "type": "package",
+  "license": "MIT",
+  "description": "Javascript web token support for WordPress projects",
+  "authors": [
+    {
+      "name": "Kelly Mears",
+      "email": "kelly@tinypixel.dev"
+    }
+  ],
+  "keywords": [
+    "wordpress",
+    "acorn",
+    "sage",
+    "glide"
+  ],
+  "support": {
+    "issues": "https://github.com/pixelcollective/acorn-glide/issues"
+  },
+  "autoload": {
+    "psr-4": {
+      "TinyPixel\\JWT\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=7.3",
+    "tiny-pixel/support": "dev-master",
+    "firebase/phpjwt": "^5.0.0"
+  },
+  "extra": {
+    "acorn": {
+      "providers": [
+          "TinyPixel\\JWT\\Providers\\JWTServiceProvider"
+      ]
+    }
+  }
+}

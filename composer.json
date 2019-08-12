@@ -26,7 +26,7 @@
   "require": {
     "php": ">=7.3",
     "tiny-pixel/support": "dev-master",
-    "firebase/phpjwt": "^5.0.0"
+    "firebase/php-jwt": "^4.0.0"
   },
   "extra": {
     "acorn": {

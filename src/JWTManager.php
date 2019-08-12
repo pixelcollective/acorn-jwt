@@ -2,13 +2,15 @@
 
 namespace TinyPixel\JWT;
 
+use function \add_action;
+use function \add_filter;
 use Roots\Acorn\Application;
 use Illuminate\Support\Collection;
 use TinyPixel\JWT\Resolver;
 use TinyPixel\JWT\API;
 
 /**
- * Javascript Web Tokens
+ * JSON Web Token Manager
  *
  * @author   Kelly Mears <kelly@tinypixel.dev>
  * @license  MIT
@@ -47,11 +49,13 @@ class JWTManager
      * @param Resolver    $resolver
      * @param API         $api
      */
-    public function __construct(Application $app, Resolver $resolver, API $api)
+    public function __construct(Application $app, array $config)
     {
-        $this->app      = $app;
-        $this->resolver = $resolver;
-        $this->api      = $api;
+        $this->app    = $app;
+        $this->config = $config;
+
+        $this->resolver = $app->make('jwt.resolver');
+        $this->api      = $app->make('jwt.api');
     }
 
     /**
@@ -59,37 +63,41 @@ class JWTManager
      *
      * @return void
      */
-    public function init()
+    public function init() : void
     {
-        $this->setActions()
-             ->setFilters();
+        $this->setActions();
+        $this->setFilters();
     }
 
     /**
      * Set WordPress actions.
      *
-     * @return JWTManager
+     * @return void
      */
-    protected function setActions()
+    protected function setActions() : void
     {
-        add_action('rest_api_init', [$this->api, 'routes']);
-
-        return $this;
+        add_action('rest_api_init', function () {
+            $this->api->routes();
+        });
     }
 
     /**
      * Set filters.
      *
-     * @return JWT
+     * @return void
      */
-    public function setFilters() : JWT
+    public function setFilters() : void
     {
-        add_filter('rest_api_init', [$this->resolver, 'cors']);
+        add_filter('rest_api_init', function () {
+            $this->api->cors();
+        });
 
-        add_filter('determine_current_user', [$this->resolver, 'setCurrentUser'], 10, 2);
+        add_filter('determine_current_user', function () {
+            $this->resolver->setCurrentUser();
+        }, 10, 2);
 
-        add_filter('rest_pre_dispatch', [$this->api, 'preDispatch'], 10, 2);
-
-        return $this;
+        add_filter('rest_pre_dispatch', function ($response) {
+            $this->api->preDispatch($response);
+        }, 10, 2);
     }
 }

@@ -2,13 +2,15 @@
 
 namespace TinyPixel\JWT;
 
+use function \is_wp_error;
+use function \wp_authenticate;
+use function \register_rest_route;
 use Roots\Acorn\Application;
 use Illuminate\Support\Collection;
 use TinyPixel\JWT\Resolver;
-use TinyPixel\JWT\API;
 
 /**
- * REST API
+ * JSON Web Token API handler
  *
  * @author   Kelly Mears <kelly@tinypixel.dev>
  * @license  MIT
@@ -20,17 +22,26 @@ use TinyPixel\JWT\API;
 class API
 {
     /**
-     * Init
-     *
-     * @param string $namespace
-     *
-     * @return void
+     * Construct.
      */
-    public function init(TokenResolver $resolver, array $config) : void
+    public function __construct(TokenResolver $resolver, array $config)
     {
-        $this->resolver  = $resolver;
-        $this->namespace = $config['api']['namespace'];
-        $this->version   = $config['api']['version'];
+        $this->resolver = $resolver;
+
+        $this->api = [
+            'namespace' => $config['api']['namespace'],
+            'version'   => $config['api']['version'],
+        ];
+    }
+
+    /**
+     * Return namespaced, versioned API route.
+     *
+     * @return string
+     */
+    public function getApiRoute()
+    {
+        return "{$this->api['namespace']}/{$this->api['version']}";
     }
 
     /**
@@ -42,19 +53,20 @@ class API
      */
     public function routes()
     {
-        \register_rest_route($this->apiNamespace, 'token', [
+        \register_rest_route($this->getApiRoute(), 'token', [
             'methods'  => 'POST',
             'callback' => [$this, 'requestToken'],
         ]);
 
-        \register_rest_route($this->apiNamespace, 'token/validate', [
+        \register_rest_route($this->getApiRoute(), 'token/validate', [
             'methods'  => 'POST',
             'callback' => [$this, 'validateToken'],
         ]);
     }
 
     /**
-     * Get the user and password in the request body and generate a JWT
+     * Authenticate the request body's auth parameters
+     * and generate a JWT
      *
      * @param $request
      *
@@ -69,17 +81,19 @@ class API
             return false;
         }
 
-        $user = wp_authenticate(
+        $user = \wp_authenticate(
             $request->get_param('username'),
             $request->get_param('password')
         );
 
-        if (is_wp_error($user)) {
+        if(\is_wp_error($user)) {
             return false;
         }
 
+        $token = $this->resolver->generateToken(time(), $user);
+
         return [
-            'token'             => $this->resolver->generateToken(time()),
+            'token'             => $this->resolver->generateToken(time(), $user),
             'user_email'        => $user->data->user_email,
             'user_nicename'     => $user->data->user_nicename,
             'user_display_name' => $user->data->display_name,
@@ -98,7 +112,7 @@ class API
         $this->authHeader = $this->resolver->validateHeaders();
         $this->token      = $this->resolver->validateTokenFormat();
 
-        return $this->resolver->decryptToken();
+        return $this->resolver->decryptToken(true);
     }
 
     /**
@@ -108,7 +122,7 @@ class API
      */
     public function cors()
     {
-        if ($this->cors) {
+        if (isset($this->cors)) {
             $this->headers = 'Access-Control-Allow-Headers, Content-Type, Authorization';
         }
     }
@@ -126,7 +140,9 @@ class API
             return $err;
         }
 
-        header($this->headers);
+        if (isset($this->headers)) {
+            header($this->headers);
+        }
 
         return $request;
     }
@@ -140,7 +156,7 @@ class API
      */
     public function hasErrors($errors = [])
     {
-        $this->resolver->errors->each(function ($err) use (&$errors) {
+        $this->resolver->errors->each(function ($err) use (& $errors) {
             $errors[] = $err;
         });
 

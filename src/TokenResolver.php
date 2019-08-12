@@ -2,11 +2,12 @@
 
 namespace TinyPixel\JWT;
 
+use function \is_wp_error;
 use Firebase\JWT\JWT;
 use Illuminate\Support\Collection;
 
 /**
- * Javascript Web Tokens
+ * JSON Web Token Resolver
  *
  * @author   Kelly Mears <kelly@tinypixel.dev>
  * @license  MIT
@@ -41,14 +42,14 @@ class TokenResolver
      *
      * @var string
      */
-    public $encryptionType = 'HS256';
+    public $encryptionType;
 
     /**
      * Valid for
      *
      * @var int
      */
-    public $validFor = DAY_IN_SECONDS * 7;
+    public $validFor;
 
     /**
      * ISS
@@ -58,61 +59,95 @@ class TokenResolver
     /**
      * Constructor.
      *
-     * @param string $secretKey
-     * @param bool   $cors
+     * @param \Firebase\JWT\JWT $jwt
+     * @param array             $config
      */
-    public function __construct(JWT $jwt, string $secretKey, bool $corsEnabled)
+    public function __construct(JWT $jwt, array $config)
     {
-        $this->JWT       = JWT::class;
-        $this->secretKey = $secretKey;
-        $this->cors      = $corsEnabled;
-        $this->iss       = get_bloginfo('url');
-        $this->errors    = Collection::make();
+        $this->configureTokenHandling($config);
+
+        $this->JWT    = JWT::class;
+        $this->errors = Collection::make();
     }
 
     /**
-     * Return a token
+     * Configures token handling.
      *
-     * @param timestamp $issued
-     *
-     * @return array
+     * @param array $config
      */
-    public function generateToken($issued)
+    public function configureTokenHandling($config)
     {
-        return [
+        $this->secretKey      = $config['secret_key'];
+        $this->iss            = $config['site_url'];
+        $this->encryptionType = $config['encryption']['type'];
+        $this->validFor       = $config['token_expiration'];
+
+        if ($this->encryptionType == 'RS256') {
+            $this->encryptionPrivateKey = $config['encryption']['private_key'];
+            $this->encryptionPublicKey  = $config['encryption']['public_key'];
+        }
+    }
+
+    /**
+     * Returns a newly encoded token.
+     *
+     * @param int       $issued
+     * @param \WP_User  $user
+     *
+     * @return string
+     */
+    public function generateToken(int $issued, \WP_User $user) : string
+    {
+        return JWT::encode([
             'iss'  => $this->iss,
             'iat'  => $issued,
             'nbf'  => $issued,
             'exp'  => $this->validFor + $issued,
-            'data' => ['user' => ['id' => $user->data->ID]],
-        ];
+            'data' => $this->formatUserResponseObject($user),
+        ], $this->getEncryptionSecret());
+
     }
 
     /**
-     * Authenticate user validity for response.
+     * Format user object in preparation for response.
      *
-     * @param (int|bool) $user
-     *
-     * @return (int|bool)
+     * @return array
      */
-    public function setCurrentUser($user)
+    protected function formatUserResponseObject($user) : array
+    {
+        return ['user' => ['id' => $user->data->ID]];
+    }
+
+    /**
+     * If request is valid set user accordingly.
+     *
+     * @param \WP_User $user
+     *
+     * @return mixed
+     * @uses   \is_wp_error
+     */
+    public function setCurrentUser(\WP_User $user)
     {
         if(!$validUri = strpos($_SERVER['REQUEST_URI'], \rest_get_url_prefix())) {
-            return $user;
+            return $this->user = $user;
         }
 
         if (strpos($_SERVER['REQUEST_URI'], 'token/validate') > 0) {
-            return $user;
+            return $this->user = $user;
         }
 
-        $token = $this->validateToken(false);
+        $token = $this->validateTokenFormat();
+
+        if ($token==false) {
+            return;
+        }
 
         if (\is_wp_error($token)) {
             if ($token->get_error_code() != 'jwt_no_auth_header') {
                 $this->errors->put($token->get_error_code());
             }
 
-            return $user;
+            return $this->user;
         }
 
         return $token->data->user->id;
@@ -125,13 +160,9 @@ class TokenResolver
      */
     public function validateTokenFormat()
     {
-        list($token) = sscanf($this->authHeader, 'Bearer %s');
+        list($this->token) = sscanf($this->validateHeaders(), 'Bearer %s');
 
-        if (!$token) {
-            return false;
-        }
-
-        return $token;
+        return isset($tthis->token) ? $this->token : false;
     }
 
     /**
@@ -151,7 +182,7 @@ class TokenResolver
                     false;
         }
 
-        return $auth ? $auth : false;
+        return isset($auth) ? $auth : false;
     }
 
     /**
@@ -159,26 +190,45 @@ class TokenResolver
      *
      * @return mixed
      */
-    public function decryptToken()
+    public function decryptToken($output)
     {
+        /**
+         * Decrypt the token
+         */
         $decryptedToken = $this->JWT::decode(
             $this->token,
-            $this->secretKey,
+            $this->getEncryptionSecret(),
             [$this->encryptionType]
         );
 
-        if ($decryptedToken->iss != get_bloginfo('url')) {
+        /**
+         * Bail early if decrypted token does not originate expectedly,
+         * or if the token does not match the user making the request
+         */
+        if ($decryptedToken->iss != $this->iss ||
+            !isset($decryptedToken->data->user->id)) {
             return false;
         }
 
-        if (!isset($decryptedToken->data->user->id)) {
-            return false;
-        }
-
-        return !$output ? $decryptedToken : [
-            'code' => 'jwt_valid_token',
-            'data' => ['status' => 200],
+        /**
+         * Otherwise return the REST response
+         */
+        return [
+            'code'  => 'jwt_valid_token',
+            'data'  => ['status' => 200],
+            'token' => $decryptedToken,
         ];
+    }
+
+    /**
+     * Get encryption secret.
+     *
+     * @return string
+     */
+    protected function getEncryptionSecret()
+    {
+        return $this->encryptionType=='RS256' && isset($this->encryptionPrivateKey)
+            ? $this->encryptionPrivateKey : $this->secretKey;
     }
 }
 

@@ -1,21 +1,22 @@
 <?php
 
-namespace TinyPixel\AcornGlide\Providers;
+namespace TinyPixel\JWT\Providers;
 
-use Roots\Acorn\ServiceProvider;
+use Firebase\JWT\JWT;
+use TinyPixel\JWT\API;
 use TinyPixel\JWT\JWTManager;
 use TinyPixel\JWT\TokenResolver;
-use Firebase\JWT\JWT;
+use Roots\Acorn\ServiceProvider;
 
 /**
  * JSON Web Token service provider.
  *
- * @author     Kelly Mears <kelly@tinypixel.dev>
- * @license    MIT
- * @version    1.0.0
- * @since      1.0.0
+ * @author   Kelly Mears <kelly@tinypixel.dev>
+ * @license  MIT
+ * @version  1.0.0
+ * @since    1.0.0
  *
- * @package    AcornGlide
+ * @package  JWT
  */
 class JWTServiceProvider extends ServiceProvider
 {
@@ -28,38 +29,26 @@ class JWTServiceProvider extends ServiceProvider
     {
         $this->publishables = [
             'src'  => __DIR__ . '/../../publishes/config/auth.php',
-            'dest' => $this->app->config_path('auth.php'),
+            'dest' => $this->app->configPath('auth.php'),
         ];
 
         if ($this->isBootable()) {
-            $this->jwtConfig = $this->app['config']->get('jwt');
+            $this->jwtConfig = $this->app['config']->get('auth');
 
             $this->app->singleton('jwt', function ($app) {
-                return JWT::class;
+                return new JWT();
             });
 
-            $this->app->singleton('jwt.resolver', function ($app){
-                return new TokenResolver(
-                    $app->make('jwt'),
-                    $this->jwtConfig['secret_key']
-                );
+            $this->app->singleton('jwt.resolver', function ($app) {
+                return new TokenResolver($app->make('jwt'), $this->jwtConfig);
             });
 
             $this->app->singleton('jwt.api', function ($app) {
-                $api = new API(
-                    $this->jwtConfig['namespace'],
-                    $this->jwtConfig['version'],
-                    $this->jwtConfig['cors_enabled']
-                );
-
-                return $api->init($this->jwtConfig['namespace']);
+                return new API($app->make('jwt.resolver'), $this->jwtConfig);
             });
 
             $this->app->singleton('jwt.manager', function ($app) {
-                $resolver = $app->make('jwt.resolver');
-                $api      = $app->make('jwt.api');
-
-                return new JWTManager($resolver, $api);
+                return new JWTManager($app, $this->jwtConfig);
             });
         }
     }
@@ -71,7 +60,9 @@ class JWTServiceProvider extends ServiceProvider
      */
     public function boot() : void
     {
-        if(!$this->isBootable()) {
+        if ($this->isBootable()) {
+            $this->app->make('jwt.manager')->init();
+        } else {
             $this->publishes([$this->configSrc => $this->configDest], 'JWT');
         }
     }

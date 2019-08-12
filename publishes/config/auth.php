@@ -20,6 +20,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Site URL
+    |--------------------------------------------------------------------------
+    |
+    | Domain of site providing JWT services.
+    |
+    */
+
+    'site_url' => get_bloginfo('url'),
+
+    /*
+    |--------------------------------------------------------------------------
     | WordPress Rest API
     |--------------------------------------------------------------------------
     |
@@ -27,10 +38,10 @@ return [
     |
     */
 
-    'namespace' => 'jwt-auth',
-    'version'   => 'v1',
-
-
+    'api' => [
+        'namespace' => 'jwt-auth',
+        'version'   => 'v1',
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -45,7 +56,34 @@ return [
     |
     */
 
-    'secret_key'  => env('JWT_AUTH_SECRET_KEY'),
+    'secret_key'  => env('JWT_SECRET_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Encryption type
+    |--------------------------------------------------------------------------
+    |
+    | Set algorithm to use when encrypting and decrypting tokens. When using
+    | RS256 you will also need to set a private and public key. Default: HS256.
+    |
+    */
+
+    'encryption' => [
+        'type'        => 'HS256',
+        'private_key' => env('JWT_OPENSSL_PRIVATE_KEY', null),
+        'public_key'  => env('JWT_OPENSSL_PUBLIC_KEY', null),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Token expiration
+    |--------------------------------------------------------------------------
+    |
+    | Here you may customize the period of time a token remains valid.
+    |
+    */
+
+    'expiration' => DAY_IN_SECONDS * 7,
 
     /*
     |--------------------------------------------------------------------------
@@ -61,6 +99,6 @@ return [
     |
     */
 
-    'cors_enabled' => disable,
+    'cors_enabled' => env('JWT_CORS_ENABLED', false),
 
 ];
